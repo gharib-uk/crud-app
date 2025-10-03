@@ -1,31 +1,33 @@
+mod auth;
+
 #[macro_use] extern crate rocket;
 
-use rocket::serde::json::{Json, Value};
+use rocket::serde::json::{Value};
 use serde_json::json;
 use rocket::response::status;
 
 #[get("/members")]
-fn get_members() -> Value {
+fn get_members(_auth: auth::BasicAuth) -> Value {
     json!([{"id":1, "name":"Alireza"},{"id":2, "name":"John"}])
 }
 
 #[get("/members/<id>")]
-fn get_member(id:i32) -> Value {
+fn get_member(id:i32, _auth: auth::BasicAuth) -> Value {
     json!([{"id":id, "name":"Alireza"}])
 }
 
 #[post("/members", format="application/json")]
-fn create_member() -> Value {
+fn create_member(_auth: auth::BasicAuth) -> Value {
     json!([{"id":3, "name":"Unknown"}])
 }
 
 #[put("/members/<id>", format="application/json")]
-fn update_member(id:i32) -> Value {
+fn update_member(id:i32, _auth: auth::BasicAuth) -> Value {
     json!([{"id":id, "name":"Unknown"}])
 }
 
 #[delete("/members/<id>")]
-fn delete_member(id:i32) -> status::NoContent {
+fn delete_member(id:i32, _auth: auth::BasicAuth) -> status::NoContent {
     status::NoContent
 }
 
