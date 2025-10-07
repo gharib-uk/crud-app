@@ -102,3 +102,5 @@ fabric.properties
 *.iml
 out
 gen
+
+db.sqlite3

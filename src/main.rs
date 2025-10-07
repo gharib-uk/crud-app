@@ -1,57 +1,105 @@
-mod auth;
-
 #[macro_use] extern crate rocket;
 
-use rocket::serde::json::{Value};
-use serde_json::json;
-use rocket::response::status;
+mod auth;
+mod schema;
+mod models;
+mod repositories;
 
-#[get("/members")]
-fn get_members(_auth: auth::BasicAuth) -> Value {
-    json!([{"id":1, "name":"Alireza"},{"id":2, "name":"John"}])
+use auth::BasicAuth;
+use diesel::result::Error::NotFound;
+use rocket::{Rocket, Build};
+use rocket::fairing::AdHoc;
+use rocket::http::Status;
+use rocket::serde::json::{Value, json, Json};
+use rocket::response::status::{self, Custom};
+use rocket_sync_db_pools::database;
+use repositories::MemberRepository;
+use crate::models::{Member, NewMember};
+
+#[database("sqlite")]
+struct DbConn(diesel::SqliteConnection);
+
+#[get("/rustaceans")]
+async fn get_rustaceans(_auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
+    db.run(|c| {
+        MemberRepository::find_multiple(c, 100)
+            .map(|rustaceans| json!(rustaceans))
+            .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
+    }).await
+}
+#[get("/rustaceans/<id>")]
+async fn view_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
+    db.run(move |c| {
+        MemberRepository::find(c, id)
+            .map(|rustacean| json!(rustacean))
+            .map_err(|e|
+                match e {
+                    NotFound => Custom(Status::NotFound, json!(e.to_string())),
+                    _ => Custom(Status::InternalServerError, json!(e.to_string()))
+                }
+            )
+    }).await
+}
+#[post("/rustaceans", format = "json", data = "<new_rustacean>")]
+async fn create_rustacean(_auth: BasicAuth, db: DbConn, new_rustacean: Json<NewMember>) -> Result<Value, Custom<Value>> {
+    db.run(|c| {
+        MemberRepository::create(c, new_rustacean.into_inner())
+            .map(|rustacean| json!(rustacean))
+            .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
+    }).await
+}
+#[put("/rustaceans/<id>", format = "json", data = "<rustacean>")]
+async fn update_rustacean(id: i32, _auth: BasicAuth, db: DbConn, rustacean: Json<Member>) -> Result<Value, Custom<Value>> {
+    db.run(move |c| {
+        MemberRepository::save(c, id, rustacean.into_inner())
+            .map(|rustacean| json!(rustacean))
+            .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
+    }).await
+}
+#[delete("/rustaceans/<id>")]
+async fn delete_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Result<status::NoContent, Custom<Value>> {
+    db.run(move |c| {
+        MemberRepository::delete(c, id)
+            .map(|_| status::NoContent)
+            .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
+    }).await
 }
 
-#[get("/members/<id>")]
-fn get_member(id:i32, _auth: auth::BasicAuth) -> Value {
-    json!([{"id":id, "name":"Alireza"}])
-}
+async fn run_db_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
-#[post("/members", format="application/json")]
-fn create_member(_auth: auth::BasicAuth) -> Value {
-    json!([{"id":3, "name":"Unknown"}])
-}
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-#[put("/members/<id>", format="application/json")]
-fn update_member(id:i32, _auth: auth::BasicAuth) -> Value {
-    json!([{"id":id, "name":"Unknown"}])
-}
+    DbConn::get_one(&rocket)
+        .await
+        .expect("Unable to retrieve connection").run(|c| {
+        c.run_pending_migrations(MIGRATIONS).expect("Migrations failed");
+    })
+        .await;
 
-#[delete("/members/<id>")]
-fn delete_member(id:i32, _auth: auth::BasicAuth) -> status::NoContent {
-    status::NoContent
-}
-
-#[get("/stats")]
-fn stats() -> Value {
-    json!({"status": "ok"})
+    rocket
 }
 
 #[catch(404)]
 fn not_found() -> Value {
-    json!({"status": "Not found"})
+    json!("Not found!")
 }
 
 #[rocket::main]
 async fn main() {
     let _ = rocket::build()
         .mount("/", routes![
-            stats,
-            create_member,
-            update_member,
-            delete_member,
-            get_members,
-            get_member,
+            get_rustaceans,
+            view_rustacean,
+            create_rustacean,
+            update_rustacean,
+            delete_rustacean
         ])
-        .register("/", catchers![not_found])
-        .launch().await;
+        .register("/", catchers![
+            not_found
+        ])
+        .attach(DbConn::fairing())
+        .attach(AdHoc::on_ignite("Diesel migrations", run_db_migrations))
+        .launch()
+        .await;
 }
