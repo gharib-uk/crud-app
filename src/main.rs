@@ -19,19 +19,19 @@ use crate::models::{Member, NewMember};
 #[database("sqlite")]
 struct DbConn(diesel::SqliteConnection);
 
-#[get("/rustaceans")]
-async fn get_rustaceans(_auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
+#[get("/members")]
+async fn get_members(_auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
     db.run(|c| {
         MemberRepository::find_multiple(c, 100)
-            .map(|rustaceans| json!(rustaceans))
+            .map(|members| json!(members))
             .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
     }).await
 }
-#[get("/rustaceans/<id>")]
-async fn view_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
+#[get("/members/<id>")]
+async fn view_member(id: i32, _auth: BasicAuth, db: DbConn) -> Result<Value, Custom<Value>> {
     db.run(move |c| {
         MemberRepository::find(c, id)
-            .map(|rustacean| json!(rustacean))
+            .map(|member| json!(member))
             .map_err(|e|
                 match e {
                     NotFound => Custom(Status::NotFound, json!(e.to_string())),
@@ -40,24 +40,24 @@ async fn view_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Result<Value, 
             )
     }).await
 }
-#[post("/rustaceans", format = "json", data = "<new_rustacean>")]
-async fn create_rustacean(_auth: BasicAuth, db: DbConn, new_rustacean: Json<NewMember>) -> Result<Value, Custom<Value>> {
+#[post("/members", format = "json", data = "<new_member>")]
+async fn create_member(_auth: BasicAuth, db: DbConn, new_member: Json<NewMember>) -> Result<Value, Custom<Value>> {
     db.run(|c| {
-        MemberRepository::create(c, new_rustacean.into_inner())
-            .map(|rustacean| json!(rustacean))
+        MemberRepository::create(c, new_member.into_inner())
+            .map(|member| json!(member))
             .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
     }).await
 }
-#[put("/rustaceans/<id>", format = "json", data = "<rustacean>")]
-async fn update_rustacean(id: i32, _auth: BasicAuth, db: DbConn, rustacean: Json<Member>) -> Result<Value, Custom<Value>> {
+#[put("/members/<id>", format = "json", data = "<member>")]
+async fn update_member(id: i32, _auth: BasicAuth, db: DbConn, member: Json<Member>) -> Result<Value, Custom<Value>> {
     db.run(move |c| {
-        MemberRepository::save(c, id, rustacean.into_inner())
-            .map(|rustacean| json!(rustacean))
+        MemberRepository::save(c, id, member.into_inner())
+            .map(|member| json!(member))
             .map_err(|e| Custom(Status::InternalServerError, json!(e.to_string())))
     }).await
 }
-#[delete("/rustaceans/<id>")]
-async fn delete_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Result<status::NoContent, Custom<Value>> {
+#[delete("/members/<id>")]
+async fn delete_member(id: i32, _auth: BasicAuth, db: DbConn) -> Result<status::NoContent, Custom<Value>> {
     db.run(move |c| {
         MemberRepository::delete(c, id)
             .map(|_| status::NoContent)
@@ -89,11 +89,11 @@ fn not_found() -> Value {
 async fn main() {
     let _ = rocket::build()
         .mount("/", routes![
-            get_rustaceans,
-            view_rustacean,
-            create_rustacean,
-            update_rustacean,
-            delete_rustacean
+            get_members,
+            view_member,
+            create_member,
+            update_member,
+            delete_member
         ])
         .register("/", catchers![
             not_found
